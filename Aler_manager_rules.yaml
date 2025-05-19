@@ -1,0 +1,14 @@
+
+groups:
+- name: InstanceDown
+  labels:
+    monitoring: true
+  rules:
+  - alert: InstanceDownAlert
+    expr: up < 1
+    for: 1m
+    keep_firing_for: 15m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Instance is Down Alert!"
