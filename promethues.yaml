@@ -1,0 +1,38 @@
+# Global configuration
+global:
+  scrape_interval: 15s        # How often to scrape targets (default: 1m)
+  evaluation_interval: 15s    # How often to evaluate rules (default: 1m)
+  # scrape_timeout is left as default (10s)
+
+# Alertmanager configuration (empty placeholder)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load alerting or recording rules (currently none)
+rule_files: []
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-scraping
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # EC2 instance discovery for Node Exporter on port 9100
+  - job_name: "ec2"
+    ec2_sd_configs:
+      - region: us-east-2
+        port: 9100
+        filters:
+          - name: availability-zone
+            values:
+              - us-east-2a   # Make sure this matches your target AZ
+    relabel_configs:
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_private_ip]
+        target_label: private_ip
+      - source_labels: [__meta_ec2_tag_Name]
+        target_label: name
