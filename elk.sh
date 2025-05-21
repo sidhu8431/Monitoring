@@ -94,6 +94,8 @@ check_version() {
   else
     echo "Elasticsearch is not installed or not running."
   fi
+
+  echo "Version check completed successfully!"
 }
 
 # Main Script
