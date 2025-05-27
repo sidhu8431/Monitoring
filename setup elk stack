@@ -1,0 +1,247 @@
+Setting up the ELK stack (Elasticsearch, Logstash, and Kibana) for logging in Kubernetes (EKS) involves several steps. Additionally, Filebeat is used as a log shipper to forward logs to Elasticsearch. Here's a guide:
+
+---
+
+### **Step 1: Create a Namespace for Logging**
+
+```bash
+kubectl create namespace logging
+```
+
+---
+
+### **Step 2: Deploy Elasticsearch**
+
+1. **Create a Persistent Volume (PV) and Persistent Volume Claim (PVC):**
+   Define storage for Elasticsearch to ensure logs are retained even if the pod restarts. Use an EBS volume or other storage options available in your cluster.
+
+   Example `elasticsearch-pvc.yaml`:
+
+   ```yaml
+   apiVersion: v1
+   kind: PersistentVolumeClaim
+   metadata:
+     name: elasticsearch-pvc
+     namespace: logging
+   spec:
+     accessModes:
+       - ReadWriteOnce
+     resources:
+       requests:
+         storage: 20Gi
+   ```
+
+   Apply it:
+
+   ```bash
+   kubectl apply -f elasticsearch-pvc.yaml
+   ```
+
+2. **Deploy Elasticsearch:**
+   Example `elasticsearch-deployment.yaml`:
+
+   ```yaml
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: elasticsearch
+     namespace: logging
+   spec:
+     replicas: 1
+     selector:
+       matchLabels:
+         app: elasticsearch
+     template:
+       metadata:
+         labels:
+           app: elasticsearch
+       spec:
+         containers:
+         - name: elasticsearch
+           image: docker.elastic.co/elasticsearch/elasticsearch:8.5.0
+           ports:
+           - containerPort: 9200
+           volumeMounts:
+           - mountPath: /usr/share/elasticsearch/data
+             name: elasticsearch-data
+           env:
+           - name: discovery.type
+             value: single-node
+         volumes:
+         - name: elasticsearch-data
+           persistentVolumeClaim:
+             claimName: elasticsearch-pvc
+   ```
+
+   Apply it:
+
+   ```bash
+   kubectl apply -f elasticsearch-deployment.yaml
+   ```
+
+---
+
+### **Step 3: Deploy Kibana**
+
+Example `kibana-deployment.yaml`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: logging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:8.5.0
+        ports:
+        - containerPort: 5601
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: http://elasticsearch.logging.svc.cluster.local:9200
+```
+
+Apply it:
+
+```bash
+kubectl apply -f kibana-deployment.yaml
+```
+
+---
+
+### **Step 4: Deploy Filebeat**
+
+Filebeat collects and forwards logs to Elasticsearch.
+
+1. Create a ConfigMap for Filebeat:
+   Example `filebeat-configmap.yaml`:
+
+   ```yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: filebeat-config
+     namespace: logging
+   data:
+     filebeat.yml: |
+       filebeat.inputs:
+       - type: container
+         paths:
+           - /var/log/containers/*.log
+       output.elasticsearch:
+         hosts: ["http://elasticsearch.logging.svc.cluster.local:9200"]
+   ```
+
+   Apply it:
+
+   ```bash
+   kubectl apply -f filebeat-configmap.yaml
+   ```
+
+2. Deploy Filebeat DaemonSet:
+   Example `filebeat-daemonset.yaml`:
+
+   ```yaml
+   apiVersion: apps/v1
+   kind: DaemonSet
+   metadata:
+     name: filebeat
+     namespace: logging
+   spec:
+     selector:
+       matchLabels:
+         app: filebeat
+     template:
+       metadata:
+         labels:
+           app: filebeat
+       spec:
+         serviceAccountName: filebeat
+         containers:
+         - name: filebeat
+           image: docker.elastic.co/beats/filebeat:8.5.0
+           volumeMounts:
+           - name: varlog
+             mountPath: /var/log
+           - name: filebeat-config
+             mountPath: /usr/share/filebeat/filebeat.yml
+             subPath: filebeat.yml
+         volumes:
+         - name: varlog
+           hostPath:
+             path: /var/log
+         - name: filebeat-config
+           configMap:
+             name: filebeat-config
+   ```
+
+   Apply it:
+
+   ```bash
+   kubectl apply -f filebeat-daemonset.yaml
+   ```
+
+---
+
+### **Step 5: Expose Kibana**
+
+To access Kibana, expose it as a service:
+Example `kibana-service.yaml`:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: logging
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 5601
+    targetPort: 5601
+  selector:
+    app: kibana
+```
+
+Apply it:
+
+```bash
+kubectl apply -f kibana-service.yaml
+```
+
+---
+
+### **Step 6: Verify the Setup**
+
+1. Check that the pods are running:
+
+   ```bash
+   kubectl get pods -n logging
+   ```
+
+2. Access Kibana using the LoadBalancer IP:
+
+   ```bash
+   http://<LoadBalancer-IP>:5601
+   ```
+
+3. Validate that logs are being ingested into Elasticsearch and visualized in Kibana.
+
+---
+
+### **Step 7: Optional Enhancements**
+
+* **Security:** Enable authentication for Elasticsearch and Kibana.
+* **Logstash:** If needed, use Logstash for log transformation and enrichment before sending logs to Elasticsearch.
+
+Would you like to go deeper into any of these steps?
